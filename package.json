@@ -1,0 +1,26 @@
+{
+  "name": "okr-clean-architecture",
+  "displayName": "Flutter Gen AI",
+  "publisher": "undefined_publisher",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "activationEvents": [
+    "onCommand:flutterGenAI.generate"
+  ],
+  "main": "./src/vscode_ext.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "flutterGenAI.generate",
+        "title": "Generate Flutter Clean Architecture"
+      }
+    ]
+  },
+  "dependencies": {
+    "axios": "^1.12.2",
+    "fs": "^0.0.1-security",
+    "path": "^0.12.7"
+  }
+}
