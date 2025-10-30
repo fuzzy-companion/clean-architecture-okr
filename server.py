@@ -7,23 +7,24 @@ from dotenv import load_dotenv
 load_dotenv()
 app = Flask(__name__)
 
-# ✅ Intent classification schema
 intent_schemas = [
     ResponseSchema(name="intent", description="Either 'create_feature' or 'modify_code'"),
-    ResponseSchema(name="target_files", description="List of file paths mentioned in the prompt")
 ]
 
 intent_parser = StructuredOutputParser.from_response_schemas(intent_schemas)
 
 intent_prompt = PromptTemplate(
     template="""
-Analyze this user request:
+You are an assistant that analyzes software development requests.
 
+Classify the user's intent based on the input description below.
+
+User input:
 {prompt}
 
-Classify the task as:
-- create_feature → generate clean architecture feature
-- modify_code → update existing code
+Possible intents:
+- create_feature → user wants to generate a new feature or architecture
+- modify_code → user wants to modify or update existing files
 
 Output valid JSON only:
 {format_instructions}
@@ -32,11 +33,10 @@ Output valid JSON only:
     partial_variables={"format_instructions": intent_parser.get_format_instructions()},
 )
 
-# ✅ Feature generation output schema
 feature_schemas = [
     ResponseSchema(
         name="files",
-        description="List of files to create. Each element: { path, content }"
+        description="List of files to create. Each item: { path, content }"
     )
 ]
 
@@ -44,20 +44,41 @@ feature_parser = StructuredOutputParser.from_response_schemas(feature_schemas)
 
 feature_prompt = PromptTemplate(
     template="""
-You are a Flutter clean architecture project generator.
+You are an expert Flutter Clean Architecture code generator.
 
-Create new feature code based on this description:
+Task:
+Generate a complete Flutter feature following Clean Architecture principles based on the user’s input specification.
 
+Feature description:
 {spec}
 
-Output valid JSON only:
+Guidelines:
+- Follow Clean Architecture layers strictly: **data**, **domain**, and **presentation**.
+- Use **BLoC pattern** for state management (no other pattern until further notice).
+- Ensure **separation of concerns** using **use cases** and **repositories**.
+- Always name the root folder using the **feature name** (e.g., "login" → "lib/features/login/").
+- Do **not** include:
+  - `main.dart`
+  - `pubspec.yaml`
+  - dont create lib and inside lib features folder as we will be working inside that folders only
+  - Dependency injection or service locator setup
+- Do **not** use external packages such as:
+  - `equatable`
+  - `either`
+- Follow naming conventions:
+  - **Classes:** Use UpperCamelCase with the first two characters as the feature acronym (e.g., `UserProfile` → `UPUserProfileScreen`)
+  - **Files:** Use snake_case (e.g., `user_profile_screen.dart`)
+- Return **only** the generated files and their content — no explanations or comments.
+- Ensure output is in **valid JSON** format.
+
+Output format:
 {format_instructions}
+
 """,
     input_variables=["spec"],
     partial_variables={"format_instructions": feature_parser.get_format_instructions()},
 )
 
-# ✅ Initialize LLM
 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
 
 intent_chain = intent_prompt | llm
@@ -68,29 +89,24 @@ feature_chain = feature_prompt | llm
 def handle_prompt():
     try:
         data = request.get_json()
-        user_prompt = data.get("feature_spec")
+        user_prompt = data.get("input")
 
         if not user_prompt:
-            return jsonify({"error": "feature_spec is required"}), 400
+            return jsonify({"error": "Missing 'input' field"}), 400
 
-        # ✅ Step 1: Detect intent
         intent_res = intent_chain.invoke({"prompt": user_prompt})
         intent_data = intent_parser.parse(intent_res.content)
 
-        print("Intent:", intent_data)
+        print("Detected Intent:", intent_data)
 
-        # ✅ Create Feature Flow
         if intent_data["intent"] == "create_feature":
             response = feature_chain.invoke({"spec": user_prompt})
-            raw_output = response.content
-            parsed = feature_parser.parse(raw_output)
-            return jsonify({"files": parsed["files"]}), 200
+            parsed_output = feature_parser.parse(response.content)
+            return jsonify(parsed_output), 200
 
-        # ✅ Modify Code Flow
         elif intent_data["intent"] == "modify_code":
             return jsonify({
-                "message": "Code modification detected (🛠 Implementation coming soon)",
-                "target_files": intent_data["target_files"]
+                "message": "Modify code intent detected (update flow coming soon)."
             }), 200
 
         else:

@@ -26,14 +26,12 @@ function activate(context) {
 
         vscode.window.showInformationMessage("Generating project structure...");
 
-        // Step 2. Send prompt to your GenAI backend (e.g., LangChain/FastAPI)
         const res = await axios.post("http://localhost:8000/generate", {
-            feature_spec: prompt,
+            input: prompt,
         });
 
-        const { files } = res.data; // Expecting { files: [{ path, content }] }
+        const { files } = res.data;
 
-        // Step 3. Write files into current workspace
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (!workspaceFolders) {
           vscode.window.showErrorMessage("Open a folder before generating files.");
