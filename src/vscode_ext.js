@@ -24,7 +24,7 @@ function activate(context) {
           return;
         }
 
-        vscode.window.showInformationMessage("Generating project structure...");
+        vscode.window.showInformationMessage("✅ Generating project structure...");
 
         const res = await axios.post("http://localhost:8000/generate", {
             input: prompt,
