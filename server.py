@@ -67,7 +67,7 @@ Guidelines:
 - Do **not** include:
   - `main.dart`
   - `pubspec.yaml`
-  - dont create lib and inside lib features folder as we will be working inside that folders only
+  - Skip generating the lib directory and features directory. Place all new files directly under the existing features folder.
   - Dependency injection or service locator setup
 - Do **not** use external packages such as:
   - `equatable`
