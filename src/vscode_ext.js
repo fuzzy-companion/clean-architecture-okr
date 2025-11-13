@@ -6,8 +6,18 @@ const axios = require("axios");
 /**
  * @param {vscode.ExtensionContext} context
  */
+
+let sessionId = null;
+
 function activate(context) {
   console.log("Flutter Gen AI Extension activated!");
+
+  const currentWorkingDir = vscode.workspace.workspaceFolders;
+  if (currentWorkingDir) {
+    sessionId = path.basename(currentWorkingDir[0].uri.fsPath);
+  } else {
+    sessionId = "default";
+  }
 
   let disposable = vscode.commands.registerCommand(
     "flutterGenAI.generate",
@@ -27,7 +37,8 @@ function activate(context) {
         vscode.window.showInformationMessage("Generating project structure...");
 
         const res = await axios.post("http://localhost:8000/generate", {
-            input: prompt,
+          session_id: sessionId,
+          input: prompt,
         });
 
         const { files } = res.data;
@@ -39,14 +50,22 @@ function activate(context) {
         }
 
         const rootPath = workspaceFolders[0].uri.fsPath;
-
+        
         files.forEach((file) => {
           const filePath = path.join(rootPath, file.path);
           fs.mkdirSync(path.dirname(filePath), { recursive: true });
           fs.writeFileSync(filePath, file.content, "utf8");
         });
 
-        vscode.window.showInformationMessage("✅ Flutter clean architecture project created!");
+        vscode.window.showInformationMessage("✅ Flutter clean architecture feature generated successfully!");
+        // if (data.message) {
+        //   // Modify flow or info
+        //   vscode.window.showInformationMessage("ℹ️ " + data.message);
+        // } 
+        // else if (data.error) {
+        //   vscode.window.showErrorMessage(data.error);
+        // } 
+
       } catch (err) {
         console.error(err);
         vscode.window.showErrorMessage("Error generating project: " + err.message);
