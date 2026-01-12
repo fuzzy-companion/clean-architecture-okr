@@ -49,7 +49,11 @@ function activate(context) {
           return;
         }
 
-        const rootPath = workspaceFolders[0].uri.fsPath;
+        const rootPath = path.join(
+                              workspaceFolders[0].uri.fsPath,
+                              "lib",
+                              "features"
+                            );
         
         files.forEach((file) => {
           const filePath = path.join(rootPath, file.path);
@@ -58,13 +62,6 @@ function activate(context) {
         });
 
         vscode.window.showInformationMessage("✅ Flutter clean architecture feature generated successfully!");
-        // if (data.message) {
-        //   // Modify flow or info
-        //   vscode.window.showInformationMessage("ℹ️ " + data.message);
-        // } 
-        // else if (data.error) {
-        //   vscode.window.showErrorMessage(data.error);
-        // } 
 
       } catch (err) {
         console.error(err);
