@@ -49,7 +49,7 @@ function activate(context) {
           return;
         }
 
-        const rootPath = workspaceFolders[0].uri.fsPath / 'lib' / 'features';
+        const rootPath = workspaceFolders[0].uri.fsPath;
         
         files.forEach((file) => {
           const filePath = path.join(rootPath, file.path);

@@ -1,20 +1,22 @@
 from flask import Flask, request, jsonify
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_ollama import ChatOllama
-from langchain_core.prompts import PromptTemplate
-from langchain_core.output_parsers import JsonOutputParser
-from pydantic import BaseModel, Field
+from langchain.prompts import PromptTemplate
+from langchain.memory import ConversationBufferMemory, ConversationBufferWindowMemory
+from langchain.output_parsers import StructuredOutputParser, ResponseSchema
 from dotenv import load_dotenv
 
 load_dotenv()
 app = Flask(__name__)
 
+# Session memory --> TODO store it in database for retrival
+sessions = {}
 
-# intent detection schema using Pydantic
-class IntentSchema(BaseModel):
-    intent: str = Field(description="Either 'create_feature' or 'modify_code'")
 
-intent_parser = JsonOutputParser(pydantic_object=IntentSchema)
+# intent detection schema, parser and prompt
+intent_schemas = [
+    ResponseSchema(name="intent", description="Either 'create_feature' or 'modify_code'"),
+]
+intent_parser = StructuredOutputParser.from_response_schemas(intent_schemas)
 intent_prompt = PromptTemplate(
     template="""
 You are an assistant that analyzes software development requests.
@@ -37,22 +39,22 @@ Output STRICTLY valid JSON (escaped properly). Do not include code fences, markd
     partial_variables={"format_instructions": intent_parser.get_format_instructions()},
 )
 
-# feature generation schema using Pydantic
-class FileSchema(BaseModel):
-    path: str = Field(description="File path")
-    content: str = Field(description="File content")
+# feature generation schema, parser and prompt
+feature_schemas = [
+    ResponseSchema(
+        name="files",
+        description="List of files to create. Each item: { path, content }"
+    )
+]
 
-class FeatureSchema(BaseModel):
-    files: list[FileSchema] = Field(description="List of files to create. Each item: { path, content }")
-
-feature_parser = JsonOutputParser(pydantic_object=FeatureSchema)
+feature_parser = StructuredOutputParser.from_response_schemas(feature_schemas)
 
 feature_prompt = PromptTemplate(
     template="""
 You are an expert Flutter Clean Architecture code generator.
 
 Task:
-Generate a complete Flutter feature following Clean Architecture principles based on the user's input specification.
+Generate a complete Flutter feature following Clean Architecture principles based on the user’s input specification.
 
 Feature description:
 {spec}
@@ -84,37 +86,81 @@ Output format:
     partial_variables={"format_instructions": feature_parser.get_format_instructions()},
 )
 
-# llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
-
-llm = ChatOllama(model="qwen3-vl:2b", temperature=0)
+llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
 
 intent_chain = intent_prompt | llm
 feature_chain = feature_prompt | llm
+
+# Creating a session and storing the conversation in the memory
+def create_session(session_id: str):
+    if session_id not in sessions:
+        sessions[session_id] = {
+            "memory": ConversationBufferMemory(memory_key="feature_history", return_messages=True),
+            "files": {}
+        }
+    return sessions[session_id]
 
 
 @app.route("/generate", methods=["POST"])
 def handle_prompt():
     try:
         data = request.get_json()
+        session_id = data.get("session_id", "default")
         user_prompt = data.get("input")
+
+        session = create_session(session_id=session_id)
 
         if not user_prompt:
             return jsonify({"error": "Missing 'input' field"}), 400
 
-        intent_response = intent_chain.invoke({"prompt": user_prompt})
-        intent_data = intent_parser.parse(intent_response.content)
+        intent_res = intent_chain.invoke({"prompt": user_prompt})
+        intent_data = intent_parser.parse(intent_res.content)
 
         print("Detected Intent:", intent_data)
 
         if intent_data["intent"] == "create_feature":
-            feature_response = feature_chain.invoke({"spec": user_prompt})
-            parsed_output = feature_parser.parse(feature_response.content)
+            response = feature_chain.invoke({"spec": user_prompt,
+                                             "feature_history": session["memory"].load_memory_variables({})
+                                             })
+            # Save generated files to session
+            parsed_output = feature_parser.parse(response.content)
+            
+            for file in parsed_output["files"]:
+                session["files"][file["path"]] = file["content"]
+            
+            session["memory"].save_context(
+               {"input": user_prompt},
+               {"output": "Feature generated"},
+            )
 
             return jsonify(parsed_output), 200
 
         elif intent_data["intent"] == "modify_code":
+            # Include context (previously generated files)
+            context_files = "\n\n".join([
+                f"// File: {key}\n{value}" for key, value in session["files"].items()
+            ])
+
+            prompt_with_context = f"""
+                User wants to modify existing feature code.
+
+                Existing files:
+                {context_files}
+
+                User instruction:
+                {user_prompt}
+                """
+            response = feature_chain.invoke({"spec": prompt_with_context,
+                                             "feature_history": session["memory"].load_memory_variables({})
+                                             })
+            parsed_output = feature_parser.parse(response.content)
+
+            for f in parsed_output["files"]:
+                session["files"][f["path"]] = f["content"]
+
+            session["memory"].save_context({"input": user_prompt}, {"output": "Code modified."})
             return jsonify({
-                "message": "Modify code intent detected (session feature coming soon)."
+                "message": "Modify code intent detected (update flow coming soon)."
             }), 200
 
         else:
